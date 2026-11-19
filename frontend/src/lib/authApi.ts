@@ -1,6 +1,11 @@
 import { authHeaders as buildHeaders, setAuth, type AuthUser } from "@/lib/authStorage";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+function apiBaseUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  return raw.replace(/\/+$/, "");
+}
+
+const API_URL = apiBaseUrl();
 
 type ApiBody = {
   success?: boolean;

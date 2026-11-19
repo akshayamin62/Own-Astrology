@@ -2,7 +2,12 @@ import { ChartRequest, ChartResponse, VargaRequest, DashaRequest, DashaResponse,
 import { authHeaders, clearAuth } from "@/lib/authStorage";
 import { normalizeChartRequest, normalizeMatchRequest, normalizeZodiac } from "@/lib/chartRequestNormalize";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+function apiBaseUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  return raw.replace(/\/+$/, "");
+}
+
+const API_URL = apiBaseUrl();
 
 function parseApiError(err: { detail?: string | Array<{ msg?: string; loc?: Array<string | number> }> }, status: number): string {
   if (Array.isArray(err.detail)) {
