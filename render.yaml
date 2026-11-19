@@ -1,0 +1,31 @@
+# Render Blueprint — deploy from repo root: Dashboard → Blueprint → connect repo.
+# Or create a Web Service manually with Root Directory: backend (same settings below).
+
+services:
+  - type: web
+    name: astrology-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: GEOCODING_PROVIDER
+        value: nominatim
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: EMAIL_ADDRESS
+        sync: false
+      - key: EMAIL_PASSWORD
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
