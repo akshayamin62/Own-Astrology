@@ -106,7 +106,12 @@ def login_with_password(body: PasswordLoginRequest):
             },
         )
 
-    expected = os.getenv("DEFAULT_LOGIN_PASSWORD", "qwerty")
+    expected = os.getenv("DEFAULT_LOGIN_PASSWORD", "").strip()
+    if not expected:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "message": "Login is not configured on the server."},
+        )
     if not secrets.compare_digest(body.password, expected):
         return JSONResponse(
             status_code=401,

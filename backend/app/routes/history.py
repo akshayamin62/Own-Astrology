@@ -6,6 +6,7 @@ import pytz
 from bson import ObjectId
 from pydantic import BaseModel
 from app.database import get_history_collection
+from app.services.fullhistory_service import record_fullhistory
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -142,7 +143,7 @@ def get_history_item(item_id: str):
 
 
 @router.delete("/{item_id}", tags=["History"])
-def delete_history_item(item_id: str):
+def delete_history_item(item_id: str, auth: dict = Depends(require_auth)):
     """Permanently delete a history entry."""
     col = get_history_collection()
     if col is None:
@@ -153,8 +154,20 @@ def delete_history_item(item_id: str):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid id format")
 
+    before = col.find_one({"_id": oid})
+    if before is None:
+        raise HTTPException(status_code=404, detail="History item not found")
+
     result = col.delete_one({"_id": oid})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="History item not found")
+
+    record_fullhistory(
+        "delete",
+        history_id=item_id,
+        payload=before,
+        user_id=auth.get("user_id"),
+        user_email=auth.get("email"),
+    )
 
     return {"ok": True}

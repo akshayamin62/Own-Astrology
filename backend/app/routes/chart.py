@@ -25,6 +25,7 @@ from app.services.astronomy import HOUSE_NAMES, longitude_to_sign_info
 from app.services.dasha import calculate_vimshottari
 from app.services.transit_calc import get_sign_transits
 from app.database import get_history_collection
+from app.services.fullhistory_service import record_fullhistory
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -45,7 +46,12 @@ def _kundali_input_doc(req: ChartRequest) -> dict:
     return doc
 
 
-def _save_kundali_history(req: ChartRequest) -> Optional[str]:
+def _save_kundali_history(
+    req: ChartRequest,
+    *,
+    user_id: Optional[str] = None,
+    user_email: Optional[str] = None,
+) -> Optional[str]:
     """Persist or update kundali inputs in MongoDB. Returns history document id."""
     try:
         col = get_history_collection()
@@ -55,11 +61,25 @@ def _save_kundali_history(req: ChartRequest) -> Optional[str]:
 
         if req.history_id:
             oid = ObjectId(req.history_id)
+            before = col.find_one({"_id": oid, "type": "kundali"})
             res = col.update_one(
                 {"_id": oid, "type": "kundali"},
                 {"$set": {"input": input_doc}},
             )
             if res.matched_count:
+                after = col.find_one({"_id": oid})
+                record_fullhistory(
+                    "update",
+                    history_id=req.history_id,
+                    payload={
+                        "type": "kundali",
+                        "before": before,
+                        "after": after,
+                        "input": input_doc,
+                    },
+                    user_id=user_id,
+                    user_email=user_email,
+                )
                 return req.history_id
             return None
 
@@ -76,7 +96,15 @@ def _save_kundali_history(req: ChartRequest) -> Optional[str]:
             "created_at": datetime.now(timezone.utc),
         }
         ins = col.insert_one(doc)
-        return str(ins.inserted_id)
+        hid = str(ins.inserted_id)
+        record_fullhistory(
+            "create",
+            history_id=hid,
+            payload={**doc, "_id": ins.inserted_id},
+            user_id=user_id,
+            user_email=user_email,
+        )
+        return hid
     except Exception:
         return None
 
@@ -165,7 +193,7 @@ def _build_varga_chart(req: VargaRequest) -> ChartResponse:
 
 
 @router.post("/chart/calculate", response_model=ChartResponse, tags=["Chart"])
-def calculate_chart(req: ChartRequest):
+def calculate_chart(req: ChartRequest, auth: dict = Depends(require_auth)):
     """
     Calculate a complete natal birth chart.
 
@@ -177,7 +205,11 @@ def calculate_chart(req: ChartRequest):
     """
     try:
         chart = build_chart(req)
-        history_id = _save_kundali_history(req)
+        history_id = _save_kundali_history(
+            req,
+            user_id=auth.get("user_id"),
+            user_email=auth.get("email"),
+        )
         return chart.model_copy(update={"history_id": history_id})
     except GeocodingError as e:
         raise HTTPException(status_code=400, detail=str(e))

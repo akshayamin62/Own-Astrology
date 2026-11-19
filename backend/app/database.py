@@ -50,6 +50,13 @@ def get_history_collection() -> Optional[Collection]:
     return db["history"]
 
 
+def get_fullhistory_collection() -> Optional[Collection]:
+    db = get_db()
+    if db is None:
+        return None
+    return db["fullhistory"]
+
+
 def get_users_collection() -> Optional[Collection]:
     db = get_db()
     if db is None:
@@ -72,3 +79,8 @@ def ensure_auth_indexes() -> None:
     captcha = get_captcha_collection()
     if captcha is not None:
         captcha.create_index("expiresAt", expireAfterSeconds=0)
+    fullhistory = get_fullhistory_collection()
+    if fullhistory is not None:
+        fullhistory.create_index("recorded_at")
+        fullhistory.create_index("history_id")
+        fullhistory.create_index("action")

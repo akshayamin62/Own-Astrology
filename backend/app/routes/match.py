@@ -7,6 +7,7 @@ from app.models.schemas import MatchRequest, MatchResponse, MatchKoot
 from app.services.chart_builder import build_chart
 from app.services.matching import calculate_match
 from app.database import get_history_collection
+from app.services.fullhistory_service import record_fullhistory
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -41,7 +42,14 @@ def _match_input_doc(req: MatchRequest, boy_chart=None, girl_chart=None) -> dict
     }
 
 
-def _save_match_history_from_request(req: MatchRequest, boy_chart=None, girl_chart=None) -> Optional[str]:
+def _save_match_history_from_request(
+    req: MatchRequest,
+    boy_chart=None,
+    girl_chart=None,
+    *,
+    user_id: Optional[str] = None,
+    user_email: Optional[str] = None,
+) -> Optional[str]:
     """Persist or update match inputs in MongoDB. Returns history document id."""
     try:
         col = get_history_collection()
@@ -51,11 +59,25 @@ def _save_match_history_from_request(req: MatchRequest, boy_chart=None, girl_cha
 
         if req.history_id:
             oid = ObjectId(req.history_id)
+            before = col.find_one({"_id": oid, "type": "match"})
             res = col.update_one(
                 {"_id": oid, "type": "match"},
                 {"$set": {"input": input_doc}},
             )
             if res.matched_count:
+                after = col.find_one({"_id": oid})
+                record_fullhistory(
+                    "update",
+                    history_id=req.history_id,
+                    payload={
+                        "type": "match",
+                        "before": before,
+                        "after": after,
+                        "input": input_doc,
+                    },
+                    user_id=user_id,
+                    user_email=user_email,
+                )
                 return req.history_id
             return None
 
@@ -72,13 +94,21 @@ def _save_match_history_from_request(req: MatchRequest, boy_chart=None, girl_cha
             "created_at": datetime.now(timezone.utc),
         }
         ins = col.insert_one(doc)
-        return str(ins.inserted_id)
+        hid = str(ins.inserted_id)
+        record_fullhistory(
+            "create",
+            history_id=hid,
+            payload={**doc, "_id": ins.inserted_id},
+            user_id=user_id,
+            user_email=user_email,
+        )
+        return hid
     except Exception:
         return None
 
 
 @router.post("/calculate", response_model=MatchResponse)
-def calculate_kundli_match(req: MatchRequest):
+def calculate_kundli_match(req: MatchRequest, auth: dict = Depends(require_auth)):
     """
     Compute Ashtakoot Guna Milan (Kundli Matching) for two people.
     Builds both charts, then calculates all 8 koots + Mangal Dosha.
@@ -125,5 +155,11 @@ def calculate_kundli_match(req: MatchRequest):
         girl_chart=girl_chart,
         sadsatkut=sadsatkut,
     )
-    history_id = _save_match_history_from_request(req, boy_chart, girl_chart)
+    history_id = _save_match_history_from_request(
+        req,
+        boy_chart,
+        girl_chart,
+        user_id=auth.get("user_id"),
+        user_email=auth.get("email"),
+    )
     return match_response.model_copy(update={"history_id": history_id})

@@ -9,6 +9,7 @@ import { getCaptcha, loginWithPassword } from "@/lib/authApi";
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [captchaQuestion, setCaptchaQuestion] = useState("");
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaAnswer, setCaptchaAnswer] = useState("");
@@ -44,12 +45,17 @@ export default function LoginPage() {
       toast.error("Please enter the captcha answer");
       return;
     }
+    if (!password) {
+      toast.error("Please enter your password");
+      return;
+    }
 
     setAccountWarning(null);
     setLoading(true);
     try {
       await loginWithPassword({
         email,
+        password,
         captchaToken,
         captchaAnswer,
       });
@@ -114,6 +120,23 @@ export default function LoginPage() {
                   {accountWarning}
                 </p>
               ) : null}
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-semibold mb-2">
+                Password
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="block w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-astrogyan-boy/30 focus:border-astrogyan-boy text-gray-900"
+                placeholder="Enter password"
+              />
             </div>
 
             <div>
