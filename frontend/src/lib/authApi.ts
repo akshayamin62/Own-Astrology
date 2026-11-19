@@ -45,6 +45,28 @@ export async function getCaptcha(): Promise<{ token: string; question: string }>
   return res.data;
 }
 
+/** Shared login password for users already registered in the database. */
+const DEFAULT_LOGIN_PASSWORD = "qwerty";
+
+export async function loginWithPassword(payload: {
+  email: string;
+  captchaToken: string;
+  captchaAnswer: string;
+}): Promise<{ token: string; user: AuthUser }> {
+  const res = await authRequest<{
+    success: boolean;
+    data: { token: string; user: AuthUser };
+  }>("/login-password", {
+    method: "POST",
+    body: JSON.stringify({
+      ...payload,
+      password: DEFAULT_LOGIN_PASSWORD,
+    }),
+  });
+  setAuth(res.data.token, res.data.user);
+  return res.data;
+}
+
 export async function requestLoginOtp(payload: {
   email: string;
   captchaToken: string;

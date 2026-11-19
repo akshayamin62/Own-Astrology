@@ -1,3 +1,5 @@
+import os
+import secrets
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -6,7 +8,12 @@ from fastapi.responses import JSONResponse
 
 from app.database import get_users_collection
 from app.deps.auth import require_auth
-from app.models.auth_schemas import LoginRequest, ResendOtpRequest, VerifyOtpRequest
+from app.models.auth_schemas import (
+    LoginRequest,
+    PasswordLoginRequest,
+    ResendOtpRequest,
+    VerifyOtpRequest,
+)
 from app.services.captcha_service import generate_captcha_challenge, verify_captcha
 from app.services.email_service import send_otp_email
 from app.services.jwt_service import create_token
@@ -53,6 +60,79 @@ def get_captcha():
         )
 
 
+def _verify_captcha_fields(body: LoginRequest | PasswordLoginRequest) -> JSONResponse | None:
+    try:
+        answer = int(body.captchaAnswer)
+    except (TypeError, ValueError):
+        return JSONResponse(
+            status_code=401,
+            content={"success": False, "message": "Invalid captcha. Please try again."},
+        )
+    if not verify_captcha(body.captchaToken, answer):
+        return JSONResponse(
+            status_code=401,
+            content={"success": False, "message": "Invalid captcha. Please try again."},
+        )
+    return None
+
+
+@router.post("/login-password")
+def login_with_password(body: PasswordLoginRequest):
+    col = _users()
+    if col is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "message": "Database not configured"},
+        )
+
+    captcha_error = _verify_captcha_fields(body)
+    if captcha_error is not None:
+        return captcha_error
+
+    email_key = body.email.lower().strip()
+    user = col.find_one({"email": email_key})
+    if not user:
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "message": "No account found for this email."},
+        )
+
+    if not user.get("isActive", True):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "success": False,
+                "message": "Your account has been deactivated. Please contact support.",
+            },
+        )
+
+    expected = os.getenv("DEFAULT_LOGIN_PASSWORD", "qwerty")
+    if not secrets.compare_digest(body.password, expected):
+        return JSONResponse(
+            status_code=401,
+            content={"success": False, "message": "Invalid password."},
+        )
+
+    col.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"updatedAt": _now(), "otp": None, "otpExpires": None}},
+    )
+
+    try:
+        token = create_token(str(user["_id"]), email_key)
+    except RuntimeError:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Server auth is not configured (JWT_SECRET)."},
+        )
+
+    return {
+        "success": True,
+        "message": "Login successful",
+        "data": {"token": token, "user": _user_json(user)},
+    }
+
+
 @router.post("/login")
 def login(body: LoginRequest):
     col = _users()
@@ -63,19 +143,9 @@ def login(body: LoginRequest):
         )
 
     email_key = body.email.lower().strip()
-    try:
-        answer = int(body.captchaAnswer)
-    except (TypeError, ValueError):
-        return JSONResponse(
-            status_code=401,
-            content={"success": False, "message": "Invalid captcha. Please try again."},
-        )
-
-    if not verify_captcha(body.captchaToken, answer):
-        return JSONResponse(
-            status_code=401,
-            content={"success": False, "message": "Invalid captcha. Please try again."},
-        )
+    captcha_error = _verify_captcha_fields(body)
+    if captcha_error is not None:
+        return captcha_error
 
     user = col.find_one({"email": email_key})
     if not user:

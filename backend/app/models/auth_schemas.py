@@ -7,6 +7,13 @@ class LoginRequest(BaseModel):
     captchaAnswer: str | int
 
 
+class PasswordLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+    captchaToken: str
+    captchaAnswer: str | int
+
+
 class VerifyOtpRequest(BaseModel):
     email: EmailStr
     otp: str = Field(min_length=6, max_length=6)
